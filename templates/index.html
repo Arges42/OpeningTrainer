@@ -14,7 +14,7 @@
     <script type="text/javascript" src='/static/js/chessboard-0.3.0.js'></script>
     <script type="text/javascript" src="/static/js/chess.js"></script>
     <script type="text/javascript" src='/static/js/bootstrap-treeview.js'></script>
-
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js"></script>
 </head>
  
 <body>
@@ -43,27 +43,40 @@
         </div><!-- /.navbar-collapse -->
       </div><!-- /.container-fluid -->
     </nav>
-
-    <div class="row"><h2>Opening</h2>
-        <div class="col-sm-4">
-            <form class="form-inline" action="{{ url_for('repertoire') }}" method="post" id="opening_form">
-                <select class="custom-select mb-2 mr-sm-2 mb-sm-0" name="color" id="opening_color">
-                    <option selected>Choose...</option>
-                    <option value="white">White</option>
-                    <option value="black">Black</option>
-                </select>
-                <input type="text" class="form-control" name="name" id="new_opening_name" placeholder="Ruy Lopez">
-                <button type="submit" class="btn btn-primary" >
-                    <span class="glyphicon glyphicon-plus" aria-hidden="true"> Add</span>
-                </button>
-            </form>
-        </div>
-        <div class="col-sm-4">
-             <div id="Opening_Explorer" class=""></div>            
-        </div>
-    </div>
-
     <div class="container">
+        <div class="row">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h2 class="panel-title">
+                        <a data-toggle="collapse" href="#opening_content">
+                           <span>Opening: </span>
+                           <span id="selected_opening">Select...</span>
+                           <span id="opening_dropdown_icon" class="glyphicon glyphicon-menu-down" aria-hidden="true"></span>
+                        </a>
+                    </h2>
+                </div>
+                <div id="opening_content" class="panel-collapse collapse">
+                    <div class="panel-body">
+                        <div class="col-sm-6">
+                            <form class="form-inline" action="{{ url_for('repertoire') }}" method="post" id="opening_form">
+                                <select class="custom-select mb-2 mr-sm-2 mb-sm-0" name="color" id="opening_color">
+                                    <option selected value="White">White</option>
+                                    <option value="Black">Black</option>
+                                </select>
+                                <input type="text" class="form-control" name="name" id="new_opening_name" placeholder="Ruy Lopez">
+                                <button type="submit" class="btn btn-primary" >
+                                    <span class="glyphicon glyphicon-plus" aria-hidden="true"> Add</span>
+                                </button>
+                            </form>
+                        </div>
+                        <div class="col-sm-6">
+                             <div id="Opening_Explorer" class=""></div>            
+                        </div>
+                    </div>
+                </div>        
+            </div>
+        </div>
+        
         <div class="row">
             <div class="col-sm-3">
                 <div id="current_moves" >

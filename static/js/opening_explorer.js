@@ -4,10 +4,12 @@ var defaultData = [
           {
             text: 'White',
             href: '#white',
+            selectable: false,
           },
           {
             text: 'Black',
             href: '#black',
+            selectable: false,
           }
         ];
 
@@ -41,8 +43,29 @@ var init_tree = function(openings) {
     }
     $('#Opening_Explorer').treeview({
         data: defaultData,
+        'onNodeSelected': node_selected,
     });
 };
+
+var node_selected =  function(event, data) {
+    $('#selected_opening').text(data["text"]);
+    var parent = $('#Opening_Explorer').treeview('getNode', data["parentId"]);
+    var send = {"opening": data["text"], "color": parent["text"]};
+    
+    $.ajax({
+      type: "POST",
+      url: "/opening",
+      dataType: 'json',
+      data: $.param(send),
+      success: function(response) {
+          console.log(response);
+          showCandidateMoves(response);
+      },
+      error: function(error) {
+          console.log(error);
+      }
+    });
+}
 
 $('#opening_form').submit(function(event){
     // cancels the form submission
@@ -62,6 +85,13 @@ $('#opening_form').submit(function(event){
       }
     });
 });
+
+$('#opening_dropdown_icon').parent().on("click", function(e){
+    $('#opening_dropdown_icon').toggleClass("glyphicon-menu-down");
+    $('#opening_dropdown_icon').toggleClass("glyphicon-menu-up");
+});
+
+
 
 
 

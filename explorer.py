@@ -1,8 +1,26 @@
+import random
+
 import pymongo
 from pymongo import MongoClient
 
 import chess
 from chess import pgn
+
+
+class OpeningTrainerError(Exception):
+    """Base class for exceptions in this module."""
+    pass
+
+class OpeningNotFoundError(OpeningTrainerError):
+    """Exception raised for openings that could not be found
+    Attributes:
+        expression -- input expression in which the error occurred
+        message -- explanation of the error
+    """
+
+    def __init__(self, expression, message):
+        self.expression = expression
+        self.message = message
 
 
 class BoardNode:
@@ -23,15 +41,19 @@ class BoardNode:
             yield BoardNode(pos["fen"], pos["BoardId"])        
 
 class Move:
-    def __init__(self, uci, from_id, to_id):
+    def __init__(self, uci, from_id, to_id, opening=[]):
         self.uci = uci
         self.from_id = from_id
         self.to_id = to_id
+        self.opening = list()
 
     @staticmethod
     def from_mongodb(query_result):
         for move in query_result:
-            yield Move(move["move"], move["board_start"], move["board_end"])
+            yield Move(move["move"],
+                       move["board_start"],
+                       move["board_end"],
+                       move["opening"])
 
     def execute(self, db):
         pos = db.positions.find({"BoardId": self.to_id})
@@ -64,6 +86,32 @@ class History:
         move = self._moves[self._index]
         board = move.execute(self._db)
         return move, board
+
+class Trainer:    
+    def __init__(self, user):
+        client = MongoClient()
+        self.db = client[user]
+        self.opening = -1
+        self._color = "White"
+
+    def random_position(self):
+        move = random.sample(list(self.db.moves.find({"opening": self.opening, "color": self._color})), 1)[0]
+        board = self.db.positions.find_one({"BoardId": move["board_start"]})
+        return board, move
+
+    def change_opening(self, opening):
+        self.opening = opening
+        self._query_opening()
+
+    def _query_opening(self):
+        result = self.db.opening.find_one({"id": self.opening})
+        try:
+            if result["color"] == "White":
+                self._color = False
+            else:
+                self._color = True
+        except Exception as err:
+            print(err)
 
 
 class Explorer:
@@ -99,6 +147,16 @@ class Explorer:
     def previous(self):
         self.board = self.history.undo()
 
+    @property
+    def opening(self):
+        return self._opening
+
+    @opening.setter
+    def opening(self, opening):
+        exists = self.db.opening.find_one({"name": opening["name"], "color": opening["color"]})
+        if exists:
+            self._opening = exists["id"]
+
     def _starting_position(self):
         """Check if the starting position is in the db, if not insert it."""
         try:
@@ -115,11 +173,20 @@ class Explorer:
 
     def _check_move(self, move):
         """Check if the move already exists."""
-        exists = self.db.moves.find({"board_start": self.board.board_id,
+        exists = self.db.moves.find_one({"board_start": self.board.board_id,
                                      "move": move})
-        try:
-            return next(Move.from_mongodb(exists))
-        except StopIteration:
+
+        if exists:
+            if self._opening in exists["opening"]:
+                #FIXME: not very pythonic
+                return next(Move.from_mongodb([exists]))
+            else:
+                self.db.moves.update({"_id": exists["_id"]},{"$addToSet":{"opening": self._opening}})
+                exists = self.db.moves.find_one({"board_start": self.board.board_id,
+                                             "move": move})
+                return next(Move.from_mongodb([exists]))
+                
+        else: 
             return self._insert_move(move)
             
     def _insert_move(self, move):
@@ -137,9 +204,11 @@ class Explorer:
 
         self.db.moves.insert_one({"board_start": self.board.board_id,
                                   "board_end": board_node.board_id,
-                                  "move": move})
+                                  "move": move,
+                                  "color": chess_board.turn,
+                                  "opening": [self._opening]})
 
-        return Move(move, self.board.board_id, board_node.board_id)
+        return Move(move, self.board.board_id, board_node.board_id, self._opening)
     
     def _insert_position(self, fen):
         """Insert a new position into the db."""
