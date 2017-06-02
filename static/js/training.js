@@ -1,5 +1,6 @@
 var board,
     correct_move,
+    full_training = false,
   game = new Chess();
 
 // do not pick up pieces if the game is over
@@ -64,7 +65,8 @@ var wrongMove = function(move) {
 
 var correctMove = function(move) {
     $("#status").text("Correct");
-    $("#training_load_position").click();
+    //$("#training_load_position").click();
+    next_position();
 };
 
 var updateMoveList = function(response) {
@@ -117,5 +119,61 @@ var load_position = function(event){
     });
 }
 
+var train_opening = function(event){
+    var send = {"load": "full"};
+    $.ajax({
+      type: "POST",
+      url: "/positions",
+      dataType: 'json',
+      data: $.param(send),
+      success: function(response) {
+          if(response === "finished"){
+              full_training = false;
+          }
+          else {
+              full_training = true;
+              var fen = response[0];
+              correct_move = response[1];
+              if(game.load(fen)){
+                board.position(fen);
+              }
+          }
+      },
+      error: function(error) {
+          console.log(error);
+      }
+    });
+}
+
+var next_position = function(){
+    if(full_training){
+        var send = {"load": "next"};
+        $.ajax({
+          type: "POST",
+          url: "/positions",
+          dataType: 'json',
+          data: $.param(send),
+          success: function(response) {
+              if(response === "finished"){
+                  full_training = false;
+                  $("#status").text("Finished");
+              }
+              else {
+                  full_training = true;
+                  var fen = response[0];
+                  correct_move = response[1];
+                  if(game.load(fen)){
+                    board.position(fen);
+                  }
+              }
+          },
+          error: function(error) {
+              console.log(error);
+          }
+        });
+    }
+}
+
 
 $("#training_load_position").on("click", load_position);
+$("#training_full_opening").on("click", train_opening);

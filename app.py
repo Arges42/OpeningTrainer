@@ -9,6 +9,8 @@ from explorer import Explorer, Trainer
 
 explorer = Explorer("user")
 trainer = Trainer("user")
+trainer.change_opening(1)
+trainer.complete_opening()
 
 app = Flask(__name__)
 board = chess.Board()
@@ -55,8 +57,18 @@ def training():
 @app.route("/positions", methods=['POST'])
 def positions():
     if "load" in request.form:
-        board, move = trainer.random_position()
-        return json.dumps((board["fen"], move["move"]))
+        if request.form["load"] == "random":
+            board, move = trainer.random_position()
+            return json.dumps((board["fen"], move["move"]))
+        elif request.form["load"] == "full":
+            trainer.complete_opening()
+            board, move = trainer.next()
+            return json.dumps((board.fen, move.uci))
+        elif request.form["load"] == "next":
+            board, move = trainer.next()
+            if board is None or move is None:
+                return json.dumps("finished")
+            return json.dumps((board.fen, move.uci))
 
 @app.route("/moves",  methods=['POST'])
 def moves():

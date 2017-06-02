@@ -27,12 +27,16 @@ class BoardNode:
     def __init__(self, fen, board_id):
         self.fen = fen
         self.board_id = board_id
+        self.color = fen.split(" ")[1]
 
     def next(self, move):
         pass
 
-    def candidate_moves(self, db):
-        moves = db.moves.find({"board_start": self.board_id})
+    def candidate_moves(self, db, opening=None):
+        find = {"board_start": self.board_id}
+        if not opening is None:
+            find["opening"] = opening
+        moves = db.moves.find(find)
         return Move.from_mongodb(moves)
 
     @staticmethod
@@ -63,6 +67,54 @@ class Move:
         pos = db.positions.find({"BoardId": self.from_id})
         return next(BoardNode.from_mongodb(pos))
 
+
+class VariationTree:
+    def __init__(self, moves=None, positions=None):
+        if not (moves is None or positions is None):
+            self._build_graph(moves, positions)
+
+    def traverse(self, start=0):
+        nodes = []
+        edges = []
+        stack = [start]
+        while stack:
+            cur_node = stack[0]
+            stack = stack[1:]
+            nodes.append(self.nodes[cur_node])
+            if cur_node in self.adjaceny_list:
+                for child in self.adjaceny_list[cur_node]:
+                    stack.insert(0, child)
+        return self._positions_to_moves(nodes)
+
+    def _positions_to_moves(self, positions):
+        for i in range(len(positions)-1):
+            start_pos = positions[i].board_id
+            end_pos = positions[i+1].board_id
+            try:
+                yield positions[i], self.moves[str(start_pos)+"-"+str(end_pos)]
+            except:
+                continue
+
+    def _build_graph(self, moves, positions):
+        if not isinstance(moves, Move):
+            moves = Move.from_mongodb(moves)
+        if not isinstance(positions, BoardNode):
+            positions = BoardNode.from_mongodb(positions)
+        
+        self.adjaceny_list = dict()
+        self.moves = dict()
+        for move in moves:
+            self.moves[str(move.from_id)+"-"+str(move.to_id)] = move
+            if move.from_id in self.adjaceny_list:
+                self.adjaceny_list[move.from_id].add(move.to_id)
+            else:
+                self.adjaceny_list[move.from_id] = set([move.to_id])
+
+        self.nodes = dict()
+        for pos in positions:
+            self.nodes[pos.board_id] = pos
+
+
 class History:
     def __init__(self, db):
         self._moves = list()
@@ -92,16 +144,39 @@ class Trainer:
         client = MongoClient()
         self.db = client[user]
         self.opening = -1
-        self._color = "White"
+        self._color = True
 
     def random_position(self):
         move = random.sample(list(self.db.moves.find({"opening": self.opening, "color": self._color})), 1)[0]
         board = self.db.positions.find_one({"BoardId": move["board_start"]})
         return board, move
 
+    def complete_opening(self):
+        moves = self.db.moves.find({"opening": self.opening})
+        pos_ids = list(set(moves.distinct("board_start")).union(set(moves.distinct("board_end"))))
+        positions = self.db.positions.find({"BoardId": {"$in":pos_ids}})
+        tree = VariationTree(moves, positions)
+        self.variations = tree.traverse()
+
+    def next(self):
+        try:
+            board, move = next(self.variations)
+            while board.color != self.color:                
+                board, move = next(self.variations)                
+            return board, move
+        except StopIteration:
+            return None, None      
+
     def change_opening(self, opening):
         self.opening = opening
         self._query_opening()
+    
+    @property
+    def color(self):
+        if self._color:
+            return "b"
+        else:
+            return "w"
 
     def _query_opening(self):
         result = self.db.opening.find_one({"id": self.opening})
