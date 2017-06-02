@@ -46,7 +46,7 @@ var sendMove = function(source, target) {
       success: function(response) {
           console.log(response);
           updateMoveList(response);
-          showCandidateMoves(response["candidates"]);
+          showCandidateMoves(response.candidates);
       },
       error: function(error) {
           console.log(error);
@@ -54,25 +54,30 @@ var sendMove = function(source, target) {
     });
 };
 
+var clearMoveList = function(response) {
+    $("#pgn-table tbody").empty();
+
+};
+
 var updateMoveList = function(response) {
     var turn = Math.floor(game.history().length/2 - 0.5)+1;
     if (game.turn() === 'b') {
-        var td = "<td id='white_"+turn+"'>"+turn+". "+response["move"]+"</td>";
+        var td = "<td id='white_"+turn+"' class='moves'>"+turn+". "+response.move+"</td>";
+        td = td + "<td id='black_"+turn+"' class='moves'></td>";
         var result = "<tr id='turn_"+turn+"'>";
         result = result+td;
         result = result + "</tr>";
         $("#pgn-table").append(result);
     }
     else{
-        var td = "<td id='black_"+turn+"'>"+response["move"]+"</td>";
-        $("#turn_"+turn).append(td);
+        $("#black_"+turn).text(response.move);
     }
-}
+};
 
 var removeLastMove = function() {
     var turn = Math.floor(game.history().length/2) + 1;
     if (game.turn() === 'b') {
-        $('#black_'+turn).remove();
+        $('#black_'+turn).text("");
     }
     else {
         $('#turn_'+turn).remove();
@@ -81,11 +86,22 @@ var removeLastMove = function() {
 
 var showCandidateMoves = function(candidates) {
     $("#candidates table tbody tr").remove();
-    for(var i=0; i<candidates.length; i++){
-        var value = candidates[i];
-        var tr = "<tr><td id='candidate_"+i+"'>"+value+"</td></tr>";
+    var i=0;
+    while(i<candidates.major.length){
+        var value = candidates.major[i];
+        var tr = "<tr><td id='candidate_"+i+"' class='major_candidate'>"+value+"</td></tr>";
         $("#candidates table tbody").append(tr);
         $("#candidate_"+i).on("click", candidate_onclick);
+        i++;
+    }
+    var j=0;
+    while(j<candidates.minor.length){
+        var value = candidates.minor[j];
+        var index = i+j;
+        var tr = "<tr><td id='candidate_"+index+"' class='minor_candidate'>"+value+"</td></tr>";
+        $("#candidates table tbody").append(tr);
+        $("#candidate_"+index).on("click", candidate_onclick);
+        j++;
     }
 };
 
@@ -144,16 +160,16 @@ var forward = function(e) {
       dataType: 'json',
       success: function(response) {
           console.log(response);
-          game.move(response["move"]);
+          game.move(response.move);
           board.position(game.fen(), true);
           updateMoveList(response);
-          showCandidateMoves(response["candidates"]);
+          showCandidateMoves(response.candidates);
       },
       error: function(error) {
           console.log(error);
       }
     });
-}
+};
 
 var backward = function(e) {
     game.undo();
@@ -168,21 +184,29 @@ var backward = function(e) {
       dataType: 'json',
       success: function(response) {
           console.log(response);
-          showCandidateMoves(response["candidates"]);
+          showCandidateMoves(response.candidates);
       },
       error: function(error) {
           console.log(error);
       }
     });
 
-}
+};
 
 var candidate_onclick = function(e) {
-    var move = game.move($(this).text());
-    board.position(game.fen(), true);
-    sendMove(move["from"], move["to"]);
-  
-}
+    if($(this).hasClass("major_candidate")){
+        var move = game.move($(this).text());
+        board.position(game.fen(), true);
+        sendMove(move.from, move.to);
+    }
+};
 
 $('#forward-btn').on('click', forward);
 $('#backward-btn').on('click', backward);
+
+
+//BEGIN: Style stuff
+$("#current_moves").height($("#board").height());
+
+$("#candidates").height($("#board").height()*0.5);
+

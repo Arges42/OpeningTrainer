@@ -61,6 +61,10 @@ var node_selected =  function(event, data) {
           console.log(response);
           showCandidateMoves(response);
           board.orientation(parent["text"].toLowerCase());
+          board.position("start");
+          game.reset();
+          clearMoveList();
+          $('#opening_dropdown_icon').parent().click();
       },
       error: function(error) {
           console.log(error);

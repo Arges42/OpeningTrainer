@@ -22,7 +22,7 @@ var onDrop = function(source, target) {
   });
 
   // illegal move
-  var san = move["from"]+move["to"];
+  var san = move.from+move.to;
 
   if (san !== correct_move){
     wrongMove(san);
@@ -72,19 +72,22 @@ var correctMove = function(move) {
 var updateMoveList = function(response) {
     var turn = Math.floor(game.history().length/2 - 0.5)+1;
     if (game.turn() === 'b') {
-        var td = "<td id='white_"+turn+"'>"+turn+". "+response["move"]+"</td>";
+        var td = "<td id='white_"+turn+"'>"+turn+". "+response.move+"</td>";
         var result = "<tr id='turn_"+turn+"'>";
         result = result+td;
         result = result + "</tr>";
         $("#pgn-table").append(result);
     }
     else{
-        var td = "<td id='black_"+turn+"'>"+response["move"]+"</td>";
+        var td = "<td id='black_"+turn+"'>"+response.move+"</td>";
         $("#turn_"+turn).append(td);
     }
-}
+};
 
 var showCandidateMoves = function(response){
+
+};
+var clearMoveList = function(response) {
 
 };
 
@@ -117,7 +120,7 @@ var load_position = function(event){
           console.log(error);
       }
     });
-}
+};
 
 var train_opening = function(event){
     var send = {"load": "full"};
@@ -143,7 +146,7 @@ var train_opening = function(event){
           console.log(error);
       }
     });
-}
+};
 
 var next_position = function(){
     if(full_training){
@@ -172,7 +175,7 @@ var next_position = function(){
           }
         });
     }
-}
+};
 
 
 $("#training_load_position").on("click", load_position);

@@ -49,7 +49,7 @@ class Move:
         self.uci = uci
         self.from_id = from_id
         self.to_id = to_id
-        self.opening = list()
+        self.opening = opening
 
     @staticmethod
     def from_mongodb(query_result):
@@ -231,6 +231,7 @@ class Explorer:
         exists = self.db.opening.find_one({"name": opening["name"], "color": opening["color"]})
         if exists:
             self._opening = exists["id"]
+            self.board = self._starting_position()
 
     def _starting_position(self):
         """Check if the starting position is in the db, if not insert it."""
@@ -303,10 +304,13 @@ class Explorer:
 
     @property
     def candidate_moves(self):
-        candidates = []
+        candidates = {"major": [], "minor": []}
         chess_board = chess.Board(self.board.fen)
         for move in self.board.candidate_moves(self.db):
-            candidates.append(chess_board.san(chess.Move.from_uci(move.uci)))
+            if self.opening in move.opening:
+                candidates["major"].append(chess_board.san(chess.Move.from_uci(move.uci)))
+            else:
+                candidates["minor"].append(chess_board.san(chess.Move.from_uci(move.uci)))
 
         return candidates
 
