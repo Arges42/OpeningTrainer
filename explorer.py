@@ -139,6 +139,11 @@ class History:
         board = move.execute(self._db)
         return move, board
 
+    @property
+    def last_move(self):
+        return self._moves[self._index]
+
+
 class Trainer:    
     def __init__(self, user):
         client = MongoClient()
@@ -222,6 +227,35 @@ class Explorer:
     def previous(self):
         self.board = self.history.undo()
 
+    def remove_last_move(self):
+        """Remove the last move and possible 
+        all following moves and positions."""
+        move = self.history.last_move
+        stack = [move]
+        while stack:
+            move = stack.pop()
+            if len(move.opening) > 1:
+                continue
+            self.db.moves.delete_one({"board_start": move.from_id,
+                                      "board_end": move.to_id,
+                                      "move": move.uci,
+                                      "opening": self.opening})
+            if self.db.moves.find({"board_end": move.to_id}).count() == 0:
+                self.db.positions.delete_one({"BoardId": move.to_id})
+
+                moves = self.db.moves.find({"board_start": move.to_id,
+                                           "opening": self.opening})
+                stack.extend(list(Move.from_mongodb(moves)))
+
+
+
+        self.board = self.history.undo()        
+
+    def remove_opening(self, name, color):
+        exists = self.db.opening.find_one({"name": name, "color": color})
+        # TODO: Remove moves associates with that opening
+        self.db.opening.delete_one({"name": name, "color": color})
+
     @property
     def opening(self):
         return self._opening
@@ -295,8 +329,6 @@ class Explorer:
         self.db.positions.insert_one({"fen": fen,
                                       "BoardId": max_board_id})
         return BoardNode(fen, max_board_id)
-
-
 
     @staticmethod
     def import_pgn(pgn_file):

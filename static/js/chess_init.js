@@ -149,6 +149,34 @@ board = ChessBoard('board', cfg);
 
 updateStatus();
 
+// PGN Navigation
+
+var removeMove = function(e) {
+
+    game.undo();
+    board.position(game.fen(), true);
+    removeLastMove();
+
+    var moves = {"remove": game.fen()};
+    $.ajax({
+      type: "POST",
+      url: "/moves",
+      data: $.param(moves),
+      dataType: 'json',
+      success: function(response) {
+          console.log(response);
+          showCandidateMoves(response.candidates);
+      },
+      error: function(error) {
+          console.log(error);
+      }
+    });
+};
+
+
+$("#remove-move-btn").on("click", removeMove);
+
+
 // Board Navigation
 
 var forward = function(e) {

@@ -65,7 +65,10 @@
                                 </select>
                                 <input type="text" class="form-control" name="name" id="new_opening_name" placeholder="Ruy Lopez">
                                 <button type="submit" class="btn btn-primary" >
-                                    <span class="glyphicon glyphicon-plus" aria-hidden="true"> Add</span>
+                                    <span class="glyphicon glyphicon-plus" aria-hidden="true"></span>Add
+                                </button>
+                                <button id="remove-opening-btn" type="button" class="btn btn-danger" aria-label="Left Align">
+                                    <span class="glyphicon glyphicon-remove" aria-hidden="true"></span> Remove Opening
                                 </button>
                             </form>
                         </div>
@@ -86,6 +89,11 @@
                         <tbody>
                         </tbody>          
                     </table>
+                </div>
+                <div id="game_navigation" align="center" style="margin-top: 5px">
+                    <button id="remove-move-btn" type="button" class="btn btn-danger" aria-label="Left Align">
+                        <span class="glyphicon glyphicon-remove" aria-hidden="true"></span> Remove Move
+                    </button>
                 </div>
             </div>
 

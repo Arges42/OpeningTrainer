@@ -32,8 +32,10 @@ def opening():
         explorer.opening = {"name": request.form["opening"], "color": request.form["color"]}
         trainer.change_opening(explorer.opening)
         return json.dumps(explorer.candidate_moves)
-
-    if "name" in request.form:
+    elif "remove" in request.form:
+        explorer.remove_opening(request.form["remove"], request.form["color"])
+        trainer.change_opening(-1)
+    elif "name" in request.form:
         form_name = request.form["name"]
         form_color = request.form["color"]
 
@@ -80,6 +82,10 @@ def moves():
     elif "next" in request.form:
         notation = explorer.next()
         result["move"] = notation
+        result["candidates"] = explorer.candidate_moves
+        return json.dumps(result)
+    elif "remove" in request.form:
+        explorer.remove_last_move()
         result["candidates"] = explorer.candidate_moves
         return json.dumps(result)
     elif ("new[source]" in request.form and

@@ -72,6 +72,27 @@ var node_selected =  function(event, data) {
     });
 }
 
+var removeNode = function(event) {
+    var data = {"color": $("#opening_color").val(), "remove": $("#new_opening_name").val()};
+    $.ajax({
+      type: "POST",
+      url: "/opening",
+      dataType: 'json',
+      data: $.param(data),
+      success: function(response) {
+          console.log(response);
+          board.position("start");
+          game.reset();
+          clearMoveList();
+          init_tree(response);
+      },
+      error: function(error) {
+          console.log(error);
+      }
+    });
+
+};
+
 $('#opening_form').submit(function(event){
     // cancels the form submission
     event.preventDefault();
@@ -97,7 +118,7 @@ $('#opening_dropdown_icon').parent().on("click", function(e){
 });
 
 
-
+$('#remove-opening-btn').on("click", removeNode); 
 
 
 
