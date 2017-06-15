@@ -1,16 +1,18 @@
 import json
 
 from pymongo import MongoClient
+import pymongo
 from flask import Flask, render_template, request, redirect, url_for
 import chess
 from chess import pgn
+from werkzeug.contrib.profiler import ProfilerMiddleware
 
 from explorer import Explorer, Trainer
 
+DEBUG = False
+
 explorer = Explorer("user")
 trainer = Trainer("user")
-trainer.change_opening(1)
-trainer.complete_opening()
 
 app = Flask(__name__)
 board = chess.Board()
@@ -41,7 +43,8 @@ def opening():
 
         exists = db["opening"].find_one({"name": form_name, "color": form_color})
         if not exists:
-            new_id = db.opening.count()+1
+            new_id = db.opening.find_one(sort=[("id", pymongo.DESCENDING)])
+            new_id = new_id["id"] + 1
             db["opening"].insert_one({"name": form_name, "color": form_color, "id": new_id})
 
     white = db["opening"].find({"color": "White"})
@@ -54,7 +57,6 @@ def opening():
 @app.route("/training", methods=['GET'])
 def training():
     return render_template('training.html')
-
 
 @app.route("/positions", methods=['POST'])
 def positions():
@@ -71,6 +73,12 @@ def positions():
             if board is None or move is None:
                 return json.dumps("finished")
             return json.dumps((board.fen, move.uci))
+    elif "performance" in request.form:
+        if request.form["performance"] == "wrong":
+            trainer.update_move_performance(False)
+        elif request.form["performance"] == "correct":
+            trainer.update_move_performance()
+    return ""
 
 @app.route("/moves",  methods=['POST'])
 def moves():
@@ -104,8 +112,8 @@ def import_pgn(pgn_file):
     return game
 
 if __name__ == "__main__":
-    app.run()
-    #game = import_pgn("spain.pgn")
-    #explorer = Explorer("jan")
-    #for m in game.main_line():
-    #    explorer.push(m)
+    if DEBUG:
+        app.wsgi_app = ProfilerMiddleware(app.wsgi_app)
+        app.run(debug=True)
+    else:
+        app.run()

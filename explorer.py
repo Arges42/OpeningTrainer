@@ -1,4 +1,5 @@
 import random
+from datetime import datetime, timedelta
 
 import pymongo
 from pymongo import MongoClient
@@ -42,22 +43,50 @@ class BoardNode:
     @staticmethod
     def from_mongodb(positions):
         for pos in positions:
-            yield BoardNode(pos["fen"], pos["BoardId"])        
+            yield BoardNode(pos["fen"], pos["BoardId"])
+
+    def __repr__(self):
+        return "BoardNode({0},id: {1}, to move: {2})".format(self.fen, self.board_id, self.color)
+
 
 class Move:
-    def __init__(self, uci, from_id, to_id, opening=[]):
+    def __init__(self, uci, from_id, to_id, opening=[], difficulty=0.3, date_last_reviewed=None, days_between_reviews=3, **kwargs):
         self.uci = uci
         self.from_id = from_id
         self.to_id = to_id
         self.opening = opening
+        self._difficulty = difficulty
+        self._days_between_reviews = timedelta(days=days_between_reviews)
+        if not isinstance(self.opening, list):
+            self.opening = list(self.opening)
+
+        if isinstance(date_last_reviewed, datetime):
+            self._date_last_reviewed = date_last_reviewed
+        elif isinstance(date_last_reviewed, int):
+            self._date_last_reviewed = datetime.fromtimestamp(date_last_reviewed)
+        else:
+            self._date_last_reviewed = date_last_reviewed
+
+        if self._date_last_reviewed is None:
+            self._review_possible = True
+        elif ((self._date_last_reviewed + self._days_between_reviews) <
+               datetime.now()):
+            self._review_possible = True
+        else:
+            self._review_possible = False
 
     @staticmethod
     def from_mongodb(query_result):
         for move in query_result:
-            yield Move(move["move"],
-                       move["board_start"],
-                       move["board_end"],
-                       move["opening"])
+            m = move.pop("move")
+            board_start = move.pop("board_start")
+            board_end = move.pop("board_end")
+            opening = move.pop("opening")
+            yield Move(m,
+                       board_start,
+                       board_end,
+                       opening,
+                       **move)
 
     def execute(self, db):
         pos = db.positions.find({"BoardId": self.to_id})
@@ -66,6 +95,47 @@ class Move:
     def undo(self, db):
         pos = db.positions.find({"BoardId": self.from_id})
         return next(BoardNode.from_mongodb(pos))
+
+    def update_performance(self, difficulty, date_last_reviewed, days_between_reviews, db=None):
+        if self._review_possible:
+            self._difficulty = difficulty
+            self._date_last_reviewed = date_last_reviewed
+            self._days_between_reviews = days_between_reviews
+            if db:
+                db.moves.update({"board_start": self.from_id,
+                                 "board_end": self.to_id},
+                                {"$set": {"difficulty": self.difficulty,
+                                          "date_last_reviewed": self.date_last_reviewed,
+                                          "days_between_reviews": self.days_between_reviews.days}})
+            self._review_possible = False
+            return True
+        else:
+            print("Move note ready for review.")
+            return False
+
+    @property
+    def needs_review(self):
+        if self._date_last_reviewed is None:
+            return True
+        elif (self._date_last_reviewed + self._days_between_reviews)<datetime.now():
+            return True
+        else:
+            return False
+
+    @property
+    def difficulty(self):
+        return self._difficulty
+
+    @property
+    def date_last_reviewed(self):
+        return self._date_last_reviewed
+
+    @property
+    def days_between_reviews(self):
+        return self._days_between_reviews
+
+    def __repr__(self):
+        return "Move({0},from: {1}, to: {2}, opening: {3})".format(self.uci, self.from_id, self.to_id, self.opening)
 
 
 class VariationTree:
@@ -116,6 +186,9 @@ class VariationTree:
 
 
 class History:
+    """Keep track of the last move played and store the corresponding board positions.
+    Used to undo/redo moves.
+    """
     def __init__(self, db):
         self._moves = list()
         self._index = -1
@@ -144,7 +217,10 @@ class History:
         return self._moves[self._index]
 
 
-class Trainer:    
+class Trainer:
+    """Train an opening and keep track of the list of moves, which need to be reviewed.
+    Updates the rating of a Move if it was answered correctly/wrong.
+    """  
     def __init__(self, user):
         client = MongoClient()
         self.db = client[user]
@@ -152,30 +228,78 @@ class Trainer:
         self._color = True
 
     def random_position(self):
+        """Choose a random position from the db with the active opening.
+        """
         move = random.sample(list(self.db.moves.find({"opening": self.opening, "color": self._color})), 1)[0]
         board = self.db.positions.find_one({"BoardId": move["board_start"]})
+        self.current_board = board
+        self.last_move = move
         return board, move
 
     def complete_opening(self):
+        """Inialize a complete training for the active opening.
+        Sets all variations, which can be accessed with next.
+        """
         moves = self.db.moves.find({"opening": self.opening})
         pos_ids = list(set(moves.distinct("board_start")).union(set(moves.distinct("board_end"))))
         positions = self.db.positions.find({"BoardId": {"$in":pos_ids}})
         tree = VariationTree(moves, positions)
         self.variations = tree.traverse()
 
+    # FIXME: Serious performance issue, some calls take like 6s to process
     def next(self):
+        """Access the next board state, which should be tested.
+        The variations have to be initailized beforehand (i.e. call complete_opening).
+        """
         try:
             board, move = next(self.variations)
-            while board.color != self.color:                
-                board, move = next(self.variations)                
+            while board.color != self.color or  not move.needs_review:                
+                board, move = next(self.variations)
+            self.current_board = board
+            self.last_move = move
             return board, move
         except StopIteration:
             return None, None      
 
     def change_opening(self, opening):
+        """Change the active opening.
+        
+        Args:
+            opening (int): ID of the opening
+        """
         self.opening = opening
         self._query_opening()
     
+    def update_move_performance(self, performance=True):
+        difficulty = self.last_move.difficulty
+        date_last_reviewed = self.last_move.date_last_reviewed
+        days_between_reviews = self.last_move.days_between_reviews
+        performance_rating = performance #Value between 0 and 1
+
+        if performance:
+            if date_last_reviewed:
+                percent_overdue = min(2, (datetime.now() - date_last_reviewed).days/days_between_reviews.days)
+            else:
+                percent_overdue = 2
+        else:
+            percent_overdue = 1
+        
+        difficulty += percent_overdue*1/17.*(8-9*performance_rating)
+        difficulty = max(min(difficulty, 1), 0)
+        difficulty_weight = 3-1.7*difficulty
+        if performance:
+            days_between_reviews = days_between_reviews.days*(1+(difficulty_weight-1)*percent_overdue)
+        else:
+            days_between_reviews = min(1, days_between_reviews.days*1./(difficulty_weight**2))
+        date_last_reviewed = datetime.now()
+        days_between_reviews = timedelta(days=days_between_reviews)
+
+        success = self.last_move.update_performance(difficulty,
+                                                   date_last_reviewed,
+                                                   days_between_reviews,
+                                                   self.db)
+        return success
+
     @property
     def color(self):
         if self._color:
@@ -231,30 +355,21 @@ class Explorer:
         """Remove the last move and possible 
         all following moves and positions."""
         move = self.history.last_move
-        stack = [move]
-        while stack:
-            move = stack.pop()
-            if len(move.opening) > 1:
-                continue
-            self.db.moves.delete_one({"board_start": move.from_id,
-                                      "board_end": move.to_id,
-                                      "move": move.uci,
-                                      "opening": self.opening})
-            if self.db.moves.find({"board_end": move.to_id}).count() == 0:
-                self.db.positions.delete_one({"BoardId": move.to_id})
-
-                moves = self.db.moves.find({"board_start": move.to_id,
-                                           "opening": self.opening})
-                stack.extend(list(Move.from_mongodb(moves)))
-
-
+        move = self.db.moves.find_one({"board_start": move.from_id, "board_end": move.to_id})
+        self._remove_moves(move, self.opening)
 
         self.board = self.history.undo()        
 
     def remove_opening(self, name, color):
         exists = self.db.opening.find_one({"name": name, "color": color})
-        # TODO: Remove moves associates with that opening
-        self.db.opening.delete_one({"name": name, "color": color})
+        if exists:
+            opening_id = exists["id"]
+            self.db.moves.update({}, {"$pull":{"opening": opening_id}}, multi=True)
+            moves = self.db.moves.find({"opening.0": {"$exists": False}})
+            
+            self._remove_moves(moves, opening_id)
+
+            self.db.opening.delete_one({"name": name, "color": color})
 
     @property
     def opening(self):
@@ -266,6 +381,27 @@ class Explorer:
         if exists:
             self._opening = exists["id"]
             self.board = self._starting_position()
+
+    def _remove_moves(self, moves, opening):
+        if isinstance(moves, pymongo.cursor.Cursor):
+            stack = list(moves)
+        else:
+            stack = [moves]
+        delete_moves = []
+        delete_positions = []
+        while stack:
+            move = stack.pop()
+            if len(move["opening"]) > 1:
+                continue
+            delete_moves.append(move["_id"])
+            if self.db.moves.find({"board_end": move["board_end"]}).count() == 1:
+                delete_positions.append(move["board_end"])
+
+                moves = self.db.moves.find({"board_start": move["board_end"],
+                                           "opening": opening})
+                stack.extend(moves)
+        self.db.moves.delete_many({"_id":{"$in":delete_moves}})
+        self.db.positions.delete_many({"_id":{"$in":delete_positions}})
 
     def _starting_position(self):
         """Check if the starting position is in the db, if not insert it."""

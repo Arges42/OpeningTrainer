@@ -21,6 +21,7 @@ var onDrop = function(source, target) {
     promotion: 'q' // NOTE: always promote to a queen for example simplicity
   });
 
+  if (move === null) return 'snapback';
   // illegal move
   var san = move.from+move.to;
 
@@ -28,7 +29,6 @@ var onDrop = function(source, target) {
     wrongMove(san);
     return 'snapback';
   }
-  if (move === null) return 'snapback';
 
   correctMove(san);
   //sendMove(source, target);
@@ -60,12 +60,14 @@ var sendMove = function(source, target) {
 
 var wrongMove = function(move) {
     game.undo();
+    send_performance("wrong", move);
     $("#status").text("Wrong");
 };
 
 var correctMove = function(move) {
     $("#status").text("Correct");
     //$("#training_load_position").click();
+    send_performance("correct", move);
     next_position();
 };
 
@@ -175,6 +177,24 @@ var next_position = function(){
           }
         });
     }
+};
+
+var send_performance = function(performance, move){
+    var send = {"performance": performance, "move": move};
+    $.ajax({
+      type: "POST",
+      url: "/positions",
+      dataType: 'json',
+      data: $.param(send),
+      success: function(response) {
+          console.log(response);
+      },
+      error: function(error) {
+          console.log(error);
+      }
+    });
+
+
 };
 
 
